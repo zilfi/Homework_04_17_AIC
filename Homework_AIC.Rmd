@@ -1,0 +1,142 @@
+---
+title: "Лучшая модель по критерию Акаике"
+author: "ЛЗ"
+date: "April 29, 2017"
+output: html_document
+---
+<h7>File->Reopen with encoding</h7>
+
+Зададим произвольные значения лагам модели GARCH(p,q). Мы будем оценивать все модели до заданных значений p и q. Создадим вектора l и x, элементы которых являются списками. Они нужны для создания пустой матрицы для спецификации модели.  
+
+```{r, echo=TRUE}
+
+p <- 10
+q <- 10
+
+l<-vector('list',p) #этим будут определяться строки матрицы спецификации   Garch(10,*)
+x<-vector('list',p) #этим тоже строки матрицы спецификации, а столбцы определяются индексом в операторе for 
+
+i <- 1
+for (i in 1:q) 
+  {
+         x[[i+1]] <- cbind(l, x[[i]])
+                       i <- i+1
+                              }
+garch_spec <- x[[q+1]] # +1 объясняется тем, что x состоит из 11-и таблиц при  q=10
+garch_spec
+```
+
+Получили пустую таблицу для спецификации модели. Проделаем то же самое для оценки моделей
+
+```{r, echo=TRUE}
+intc_garch_fit <- x[[q+1]]
+intc_garch_fit
+```
+
+Таблицы созданы. Запустим пакеты для определения спецификации моделей, используя оператор for.
+
+```{r, echo=TRUE}
+#install.pachages("parallel")
+library("parallel")
+#install.packages("rugarch")
+library("rugarch")
+
+j=1
+
+for(j in 1:q)
+{
+  for (i in 1:p)
+  {
+    
+    garch_spec[[i,j]]<- ugarchspec(variance.model = list(garchOrder = c(i, j)),mean.model = list(armaOrder = c(0, 0)))
+    i=i+1
+  }
+  j=j+1
+}
+
+garch_spec
+```
+
+Таблица состоит из "?", но в нем уже есть нужная нам информация. Знак "?", наверное, связан с размером информации. Но мы можем проверить, например, посмотреть на спецификацую GARCH(5,2)
+
+```{r, echo=TRUE}
+garch_spec[5,2] #пример
+```
+
+Для оценки модели, нам нужны данные.Введем месячную доходность корпорации Интел.
+
+```{r, echo=TRUE}
+#install.packages("rugarch")
+library("zoo")
+
+intc <- read.zoo("intc.csv", sep =",", format = "%Y-%m", head = TRUE, FUN = as.yearmon)
+head(intc)
+```
+
+Оценим модели.
+
+```{r, echo=TRUE}
+for(j in 1:q)
+{
+  for (i in 1:p)
+  {
+    
+    intc_garch_fit[[i,j]] <- ugarchfit(spec = garch_spec[[i,j]], data = intc)
+    i=i+1
+  }
+  j=j+1
+}
+
+
+intc_garch_fit  #надо немного подождать
+```
+
+Снова не волнуемся из-за "?"-ов. Проверим оцененную модель GARCH(2,3)
+
+```{r, echo=TRUE}
+
+intc_garch_fit[[2,3]] # Вы можете взять любую другую модель
+```
+
+Создадим пустую матрицу, соответствующую нашим вводным данным. В матрице будут помещены критерии Акаике для всех моделей.
+
+```{r, echo=TRUE}
+aic <- matrix(0,p,q)
+aic
+```
+
+Получим матрицу из критериев Акаике снова с помощью for
+
+```{r, echo=TRUE}
+
+for(j in 1:q)
+{
+  for (i in 1:p)
+  {
+     aic[[i,j]] <- infocriteria(intc_garch_fit[[i,j]])[1] #[1] говорит о том, что взята только AIC, 3 другие критерии нас не интересуют (пока что)
+          i <- i+1
+                }
+                  j <- j+1
+                        }
+aic
+```
+
+Найдем, где находится самое маленькое значение
+
+```{r, echo=TRUE}
+place <- which(aic == min(aic), TRUE)
+place
+```
+
+Используем ее для оценивания 
+
+```{r, echo=TRUE}
+intc_garch_fit[place[1],place[2]]
+```
+
+И для спецификации модели (для оцения VaR)
+
+```{r, echo=TRUE}
+garch_spec[place[1],place[2]]
+```
+Для оценки VaR все остальное по аналогии
